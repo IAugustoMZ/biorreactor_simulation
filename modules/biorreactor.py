@@ -33,7 +33,9 @@ class BioReactor:
         self.prod = production                  # desired amount of ethanol production in a year [m³]
         self.batch_time = batch_time            # total desired batch time (operation) [h]
         self.ethanol_d = 0.79                   # ethanol density [g/cm3]
-        self.setup_pct = 6                      # estimated time of setup [h]
+        self.setup_time = 6                     # estimated time of setup [h]
+        self.volume = None                      # total necessary volume [m3]
+        self.operational_days= 300              # number of operational days  by year [days]
 
         # creating dictionary of states to store iterations results
         self.states_dict = {
@@ -54,7 +56,10 @@ class BioReactor:
         """
 
         # rate of product inhibition
-        k_obs = (1-(self.states_dict['Cp']/self.cp_s))**(self.n)
+        if self.states_dict['Cp'] >= self.cp_s:
+            k_obs = 0
+        else:
+            k_obs = (1-(self.states_dict['Cp']/self.cp_s))**(self.n)
 
         # rate of new cells generation (rg) - [g_cell / h]
         rg = self.mu_max*k_obs*((self.states_dict['Cc']*self.states_dict['Cs'])/(self.Ks+self.states_dict['Cs']))
@@ -159,4 +164,35 @@ class BioReactor:
             Cs += (h/6)*(k1_list[1] + (2*k2_list[1]) + (2*k3_list[1]) + k4_list[1])
             Cp += (h/6)*(k1_list[2] + (2*k2_list[2]) + (2*k3_list[2]) + k4_list[2])
 
-        return results 
+        return results
+
+    def calculate_volume(self):
+        """
+        calculates the necessary volume to attend the demanded ethanol production
+
+        args: None
+
+        returns: None
+        """
+
+        # execute simulation to calculate the outlet concentration
+        results = self.runge_kutta()
+
+        # extract concentration of ethanol at outlet of reactor
+        Cet = results.tail(1)['product_conc'].values[0]
+        
+        # calculate volume of reaction
+        self.volume = (self.prod*self.ethanol_d*(self.batch_time+self.setup_time))/(Cet*self.operational_days*24*1000)
+
+    def change_cells(self, new_Ks, new_u):
+        """
+        method to simulate the modification of microrganism used in fermentation
+
+        args: new Monod and maximum velocity parameters
+
+        returns: None
+        """
+
+        # change the microrganism parameters
+        self.Ks = new_Ks
+        self.mu_max = new_u
